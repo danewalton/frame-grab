@@ -17,6 +17,7 @@ class VideoViewModel: ObservableObject {
 
     private var asset: AVAsset?
     private var timeObserver: Any?
+    private var playerForDeinit: AVPlayer?   // nonisolated-safe reference for deinit
     private let frameExtractor = FrameExtractor()
 
     // MARK: - Video Loading
@@ -61,6 +62,7 @@ class VideoViewModel: ObservableObject {
         self.capturedFrames = []
 
         addTimeObserver(to: player)
+        playerForDeinit = player
         await generateThumbnailStrip()
     }
 
@@ -179,9 +181,9 @@ class VideoViewModel: ObservableObject {
         }
     }
 
-    deinit {
+    nonisolated deinit {
         if let observer = timeObserver {
-            player?.removeTimeObserver(observer)
+            playerForDeinit?.removeTimeObserver(observer)
         }
     }
 }

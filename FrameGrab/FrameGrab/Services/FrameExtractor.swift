@@ -42,10 +42,10 @@ actor FrameExtractor {
         var completed = 0
 
         return try await withCheckedThrowingContinuation { continuation in
-            generator.generateCGImagesAsynchronously(forTimes: nsValues) { _, cgImage, _, result, error in
+            generator.generateCGImagesAsynchronously(forTimes: nsValues) { _, cgImage, actualTime, result, error in
                 completed += 1
                 if let cgImage, result == .succeeded {
-                    // This is a rough ordering; actual timestamp is in actualTime
+                    images[actualTime.value] = UIImage(cgImage: cgImage)
                 }
                 if result == .failed, let error {
                     errors.append(error)
@@ -55,7 +55,8 @@ actor FrameExtractor {
                     if errors.count == times.count {
                         continuation.resume(throwing: errors[0])
                     } else {
-                        continuation.resume(returning: Array(images.values))
+                        let sorted = images.sorted { $0.key < $1.key }.map { $0.value }
+                        continuation.resume(returning: sorted)
                     }
                 }
             }

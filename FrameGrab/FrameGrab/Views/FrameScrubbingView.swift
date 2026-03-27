@@ -51,6 +51,9 @@ struct FrameScrubbingView: View {
                     isScrubbing: $isScrubbing
                 )
 
+                // Neighbor frame strip (frames around current position)
+                NeighborFrameStrip(viewModel: viewModel)
+
                 // Playback controls
                 HStack(spacing: 32) {
                     // Step back
@@ -219,6 +222,41 @@ struct ThumbnailStrip: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - Neighbor Frame Strip
+
+struct NeighborFrameStrip: View {
+    @ObservedObject var viewModel: VideoViewModel
+
+    var body: some View {
+        HStack(spacing: 6) {
+            if viewModel.neighborFrames.isEmpty {
+                Color.gray.opacity(0.2)
+                    .frame(height: 44)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+            } else {
+                let midIndex = viewModel.neighborFrames.count / 2
+                ForEach(Array(viewModel.neighborFrames.enumerated()), id: \.offset) { index, frame in
+                    let isCurrent = index == midIndex
+                    Image(uiImage: frame.image)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: isCurrent ? 66 : 52, height: isCurrent ? 44 : 36)
+                        .clipped()
+                        .clipShape(RoundedRectangle(cornerRadius: 5))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 5)
+                                .stroke(isCurrent ? Color.accentColor : Color.white.opacity(0.2), lineWidth: isCurrent ? 2 : 1)
+                        )
+                        .shadow(color: .black.opacity(isCurrent ? 0.4 : 0.2), radius: 2)
+                        .animation(.easeInOut(duration: 0.1), value: isCurrent)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .animation(.easeInOut(duration: 0.15), value: viewModel.neighborFrames.map { $0.time })
     }
 }
 

@@ -14,14 +14,12 @@ class VideoViewModel: ObservableObject {
     @Published var isCapturing = false
     @Published var captureError: String?
     @Published var thumbnailCache: [Double: UIImage] = [:]
-    @Published var neighborFrames: [(time: Double, image: UIImage)] = []
 
     private var asset: AVAsset?
     private var timeObserver: Any?
     private var playerForDeinit: AVPlayer?   // nonisolated-safe reference for deinit
     private let frameExtractor = FrameExtractor()
     private var frameRate: Double = 30.0
-    private var neighborTask: Task<Void, Never>?
 
     // MARK: - Video Loading
 
@@ -66,9 +64,9 @@ class VideoViewModel: ObservableObject {
 
         addTimeObserver(to: player)
         playerForDeinit = player
-        await loadFrameRate()
-        await generateThumbnailStrip()
-        await generateNeighborFrames(around: 0)
+        // Fire both in background so the player is usable immediately
+        Task { await loadFrameRate() }
+        Task { await generateThumbnailStrip() }
     }
 
     // MARK: - Playback Control
@@ -92,7 +90,6 @@ class VideoViewModel: ObservableObject {
         let cmTime = CMTime(seconds: time, preferredTimescale: 600)
         player.seek(to: cmTime, toleranceBefore: .zero, toleranceAfter: .zero)
         currentTime = time
-        scheduleNeighborFrameUpdate()
     }
 
     func stepFrame(forward: Bool) {
@@ -124,7 +121,7 @@ class VideoViewModel: ObservableObject {
         }
     }
 
-    // MARK: - Thumbnail Strip
+    // MARK: - Thumbnails & Frame Rate
 
     private func loadFrameRate() async {
         guard let asset else { return }
@@ -135,41 +132,6 @@ class VideoViewModel: ObservableObject {
                 frameRate = max(1, Double(fps))
             }
         } catch {}
-    }
-
-    private func scheduleNeighborFrameUpdate() {
-        neighborTask?.cancel()
-        neighborTask = Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(150))
-            guard let self, !Task.isCancelled else { return }
-            await self.generateNeighborFrames(around: self.currentTime)
-        }
-    }
-
-    private func generateNeighborFrames(around time: Double) async {
-        guard let asset, duration > 0 else { return }
-        let frameStep = 1.0 / frameRate
-        let offsets = [-2, -1, 0, 1, 2]
-
-        await withTaskGroup(of: (Double, UIImage?).self) { group in
-            for offset in offsets {
-                let t = max(0, min(duration, time + Double(offset) * frameStep))
-                group.addTask { [weak self] in
-                    guard let self else { return (t, nil) }
-                    let img = try? await self.frameExtractor.extractFrame(
-                        from: asset,
-                        at: CMTime(seconds: t, preferredTimescale: 600),
-                        maximumSize: CGSize(width: 120, height: 80)
-                    )
-                    return (t, img)
-                }
-            }
-            var raw: [(Double, UIImage?)] = []
-            for await result in group { raw.append(result) }
-            neighborFrames = raw
-                .compactMap { t, img in img.map { (time: t, image: $0) } }
-                .sorted { $0.time < $1.time }
-        }
     }
 
     private func generateThumbnailStrip() async {
@@ -187,7 +149,8 @@ class VideoViewModel: ObservableObject {
                     let img = try? await self.frameExtractor.extractFrame(
                         from: asset,
                         at: CMTime(seconds: t, preferredTimescale: 600),
-                        maximumSize: CGSize(width: 120, height: 80)
+                        maximumSize: CGSize(width: 120, height: 80),
+                        precise: false
                     )
                     return (t, img)
                 }

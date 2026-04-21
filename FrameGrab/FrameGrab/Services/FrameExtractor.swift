@@ -6,11 +6,20 @@ actor FrameExtractor {
     func extractFrame(
         from asset: AVAsset,
         at time: CMTime,
-        maximumSize: CGSize = .zero
+        maximumSize: CGSize = .zero,
+        precise: Bool = true
     ) async throws -> UIImage {
         let generator = AVAssetImageGenerator(asset: asset)
-        generator.requestedTimeToleranceBefore = .zero
-        generator.requestedTimeToleranceAfter = .zero
+        // .zero tolerance decodes from the exact frame; use only for capture.
+        // Loose tolerance lets AVFoundation jump to the nearest keyframe, which
+        // is dramatically faster and fine for thumbnail previews.
+        if precise {
+            generator.requestedTimeToleranceBefore = .zero
+            generator.requestedTimeToleranceAfter = .zero
+        } else {
+            generator.requestedTimeToleranceBefore = CMTime(seconds: 1, preferredTimescale: 600)
+            generator.requestedTimeToleranceAfter = CMTime(seconds: 1, preferredTimescale: 600)
+        }
         generator.appliesPreferredTrackTransform = true
 
         if maximumSize != .zero {
